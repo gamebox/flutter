@@ -17,18 +17,15 @@ import 'package:test_core/src/runner/suite.dart'; // ignore: implementation_impo
 import 'package:test_core/src/runner/plugin/platform_helpers.dart'; // ignore: implementation_imports
 import 'package:test_core/src/runner/environment.dart'; // ignore: implementation_imports
 
-import '../artifacts.dart';
 import '../base/common.dart';
 import '../base/file_system.dart';
 import '../base/io.dart';
 import '../base/process_manager.dart';
-import '../base/terminal.dart';
-import '../build_info.dart';
-import '../bundle.dart';
-import '../compile.dart';
 import '../dart/package_map.dart';
 import '../globals.dart';
 import '../vmservice.dart';
+import 'bootstrap.dart';
+import 'compiler.dart';
 import 'watcher.dart';
 
 /// The timeout we give the test process to connect to the test harness
@@ -40,26 +37,9 @@ const Duration _kTestStartupTimeout = Duration(minutes: 1);
 /// any problem with Flutter, so we give it a large timeout.
 const Duration _kTestProcessTimeout = Duration(minutes: 5);
 
-/// Message logged by the test process to signal that its main method has begun
-/// execution.
-///
-/// The test harness responds by starting the [_kTestStartupTimeout] countdown.
-/// The CPU may be throttled, which can cause a long delay in between when the
-/// process is spawned and when dart code execution begins; we don't want to
-/// hold that against the test.
-const String _kStartTimeoutTimerMessage = 'sky_shell test process has entered main method';
-
-/// The name of the test configuration file that will be discovered by the
-/// test harness if it exists in the project directory hierarchy.
-const String _kTestConfigFileName = 'flutter_test_config.dart';
-
-/// The name of the file that signals the root of the project and that will
-/// cause the test harness to stop scanning for configuration files.
-const String _kProjectRootSentinel = 'pubspec.yaml';
-
 /// The address at which our WebSocket server resides and at which the sky_shell
 /// processes will host the Observatory server.
-final Map<InternetAddressType, InternetAddress> _kHosts = <InternetAddressType, InternetAddress>{
+final Map<InternetAddressType, InternetAddress> kHosts = <InternetAddressType, InternetAddress>{
   InternetAddressType.IPv4: InternetAddress.loopbackIPv4,
   InternetAddressType.IPv6: InternetAddress.loopbackIPv6,
 };
@@ -76,8 +56,7 @@ void installHook({
   bool machine = false,
   bool startPaused = false,
   int port = 0,
-  String precompiledDillPath,
-  Map<String, String> precompiledDillFiles,
+  @required Map<String, String> precompiledDillFiles,
   bool trackWidgetCreation = false,
   bool updateGoldens = false,
   int observatoryPort,
@@ -85,6 +64,7 @@ void installHook({
   Uri projectRootDirectory,
 }) {
   assert(!enableObservatory || (!startPaused && observatoryPort == null));
+  assert(precompiledDillFiles != null && precompiledDillFiles.isNotEmpty);
   hack.registerPlatformPlugin(
     <Runtime>[Runtime.vm],
     () => _FlutterPlatform(
@@ -94,9 +74,8 @@ void installHook({
       enableObservatory: enableObservatory,
       startPaused: startPaused,
       explicitObservatoryPort: observatoryPort,
-      host: _kHosts[serverType],
+      host: kHosts[serverType],
       port: port,
-      precompiledDillPath: precompiledDillPath,
       precompiledDillFiles: precompiledDillFiles,
       trackWidgetCreation: trackWidgetCreation,
       updateGoldens: updateGoldens,
@@ -105,262 +84,9 @@ void installHook({
   );
 }
 
-/// Generates the bootstrap entry point script that will be used to launch an
-/// individual test file.
-///
-/// The [testUrl] argument specifies the path to the test file that is being
-/// launched.
-///
-/// The [host] argument specifies the address at which the test harness is
-/// running.
-///
-/// If [testConfigFile] is specified, it must follow the conventions of test
-/// configuration files as outlined in the [flutter_test] library. By default,
-/// the test file will be launched directly.
-///
-/// The [updateGoldens] argument will set the [autoUpdateGoldens] global
-/// variable in the [flutter_test] package before invoking the test.
-String generateTestBootstrap({
-  @required Uri testUrl,
-  @required InternetAddress host,
-  File testConfigFile,
-  bool updateGoldens = false,
-}) {
-  assert(testUrl != null);
-  assert(host != null);
-  assert(updateGoldens != null);
-
-  final String websocketUrl = host.type == InternetAddressType.IPv4
-      ? 'ws://${host.address}'
-      : 'ws://[${host.address}]';
-  final String encodedWebsocketUrl = Uri.encodeComponent(websocketUrl);
-
-  final StringBuffer buffer = StringBuffer();
-  buffer.write('''
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';  // ignore: dart_io_import
-import 'dart:isolate';
-
-import 'package:flutter_test/flutter_test.dart';
-import 'package:test_api/src/remote_listener.dart';
-import 'package:stream_channel/stream_channel.dart';
-import 'package:stack_trace/stack_trace.dart';
-
-import '$testUrl' as test;
-''');
-  if (testConfigFile != null) {
-    buffer.write('''
-import '${Uri.file(testConfigFile.path)}' as test_config;
-''');
-  }
-  buffer.write('''
-
-/// Returns a serialized test suite.
-StreamChannel<dynamic> serializeSuite(Function getMain(),
-    {bool hidePrints = true, Future<dynamic> beforeLoad()}) {
-  return RemoteListener.start(getMain,
-      hidePrints: hidePrints, beforeLoad: beforeLoad);
-}
-
-/// Capture any top-level errors (mostly lazy syntax errors, since other are
-/// caught below) and report them to the parent isolate.
-void catchIsolateErrors() {
-  final ReceivePort errorPort = ReceivePort();
-  // Treat errors non-fatal because otherwise they'll be double-printed.
-  Isolate.current.setErrorsFatal(false);
-  Isolate.current.addErrorListener(errorPort.sendPort);
-  errorPort.listen((dynamic message) {
-    // Masquerade as an IsolateSpawnException because that's what this would
-    // be if the error had been detected statically.
-    final IsolateSpawnException error = IsolateSpawnException(message[0]);
-    final Trace stackTrace =
-        message[1] == null ? Trace(const <Frame>[]) : Trace.parse(message[1]);
-    Zone.current.handleUncaughtError(error, stackTrace);
-  });
-}
-
-
-void main() {
-  print('$_kStartTimeoutTimerMessage');
-  String serverPort = Platform.environment['SERVER_PORT'];
-  String server = Uri.decodeComponent('$encodedWebsocketUrl:\$serverPort');
-  StreamChannel channel = serializeSuite(() {
-    catchIsolateErrors();
-    goldenFileComparator = new LocalFileComparator(Uri.parse('$testUrl'));
-    autoUpdateGoldenFiles = $updateGoldens;
-''');
-  if (testConfigFile != null) {
-    buffer.write('''
-    return () => test_config.main(test.main);
-''');
-  } else {
-    buffer.write('''
-    return test.main;
-''');
-  }
-  buffer.write('''
-  });
-  WebSocket.connect(server).then((WebSocket socket) {
-    socket.map((dynamic x) {
-      assert(x is String);
-      return json.decode(x);
-    }).pipe(channel.sink);
-    socket.addStream(channel.stream.map(json.encode));
-  });
-}
-''');
-  return buffer.toString();
-}
-
 enum _InitialResult { crashed, timedOut, connected }
 enum _TestResult { crashed, harnessBailed, testBailed }
 typedef _Finalizer = Future<void> Function();
-
-class _CompilationRequest {
-  _CompilationRequest(this.path, this.result);
-  String path;
-  Completer<String> result;
-}
-
-// This class is a wrapper around compiler that allows multiple isolates to
-// enqueue compilation requests, but ensures only one compilation at a time.
-class _Compiler {
-  _Compiler(bool trackWidgetCreation, Uri projectRootDirectory) {
-    // Compiler maintains and updates single incremental dill file.
-    // Incremental compilation requests done for each test copy that file away
-    // for independent execution.
-    final Directory outputDillDirectory = fs.systemTempDirectory.createTempSync('flutter_test_compiler.');
-    final File outputDill = outputDillDirectory.childFile('output.dill');
-
-    printTrace('Compiler will use the following file as its incremental dill file: ${outputDill.path}');
-
-    bool suppressOutput = false;
-    void reportCompilerMessage(String message, {bool emphasis, TerminalColor color}) {
-      if (suppressOutput) {
-        return;
-      }
-
-      if (message.startsWith('Error: Could not resolve the package \'flutter_test\'')) {
-        printTrace(message);
-        printError('\n\nFailed to load test harness. Are you missing a dependency on flutter_test?\n',
-          emphasis: emphasis,
-          color: color,
-        );
-        suppressOutput = true;
-        return;
-      }
-
-      printError('$message');
-    }
-
-    final String testFilePath = getKernelPathForTransformerOptions(
-      fs.path.join(fs.path.fromUri(projectRootDirectory), getBuildDirectory(), 'testfile.dill'),
-      trackWidgetCreation: trackWidgetCreation,
-    );
-
-    ResidentCompiler createCompiler() {
-      return ResidentCompiler(
-        artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
-        packagesPath: PackageMap.globalPackagesPath,
-        trackWidgetCreation: trackWidgetCreation,
-        compilerMessageConsumer: reportCompilerMessage,
-        initializeFromDill: testFilePath,
-        unsafePackageSerialization: false,
-      );
-    }
-
-    printTrace('Listening to compiler controller...');
-    compilerController.stream.listen((_CompilationRequest request) async {
-      final bool isEmpty = compilationQueue.isEmpty;
-      compilationQueue.add(request);
-      // Only trigger processing if queue was empty - i.e. no other requests
-      // are currently being processed. This effectively enforces "one
-      // compilation request at a time".
-      if (isEmpty) {
-        while (compilationQueue.isNotEmpty) {
-          final _CompilationRequest request = compilationQueue.first;
-          printTrace('Compiling ${request.path}');
-          final Stopwatch compilerTime = Stopwatch()..start();
-          bool firstCompile = false;
-          if (compiler == null) {
-            compiler = createCompiler();
-            firstCompile = true;
-          }
-          suppressOutput = false;
-          final CompilerOutput compilerOutput = await handleTimeout<CompilerOutput>(
-            compiler.recompile(
-              request.path,
-              <String>[request.path],
-              outputPath: outputDill.path),
-              request.path,
-            );
-          final String outputPath = compilerOutput?.outputFilename;
-
-          // In case compiler didn't produce output or reported compilation
-          // errors, pass [null] upwards to the consumer and shutdown the
-          // compiler to avoid reusing compiler that might have gotten into
-          // a weird state.
-          if (outputPath == null || compilerOutput.errorCount > 0) {
-            request.result.complete(null);
-            await _shutdown();
-          } else {
-            final File outputFile = fs.file(outputPath);
-            final File kernelReadyToRun = await outputFile.copy('${request.path}.dill');
-            final File testCache = fs.file(testFilePath);
-            if (firstCompile || !testCache.existsSync() || (testCache.lengthSync() < outputFile.lengthSync())) {
-              // The idea is to keep the cache file up-to-date and include as
-              // much as possible in an effort to re-use as many packages as
-              // possible.
-              ensureDirectoryExists(testFilePath);
-              await outputFile.copy(testFilePath);
-            }
-            request.result.complete(kernelReadyToRun.path);
-            compiler.accept();
-            compiler.reset();
-          }
-          printTrace('Compiling ${request.path} took ${compilerTime.elapsedMilliseconds}ms');
-          // Only remove now when we finished processing the element
-          compilationQueue.removeAt(0);
-        }
-      }
-    }, onDone: () {
-      printTrace('Deleting ${outputDillDirectory.path}...');
-      outputDillDirectory.deleteSync(recursive: true);
-    });
-  }
-
-  final StreamController<_CompilationRequest> compilerController = StreamController<_CompilationRequest>();
-  final List<_CompilationRequest> compilationQueue = <_CompilationRequest>[];
-  ResidentCompiler compiler;
-
-  Future<String> compile(String mainDart) {
-    final Completer<String> completer = Completer<String>();
-    compilerController.add(_CompilationRequest(mainDart, completer));
-    return handleTimeout<String>(completer.future, mainDart);
-  }
-
-  Future<void> _shutdown() async {
-    // Check for null in case this instance is shut down before the
-    // lazily-created compiler has been created.
-    if (compiler != null) {
-      await compiler.shutdown();
-      compiler = null;
-    }
-  }
-
-  Future<void> dispose() async {
-    await _shutdown();
-    await compilerController.close();
-  }
-
-  static Future<T> handleTimeout<T>(Future<T> value, String path) {
-    return value.timeout(const Duration(minutes: 5), onTimeout: () {
-      printError('Compilation of $path timed out after 5 minutes.');
-      return null;
-    });
-  }
-}
 
 class _FlutterPlatform extends PlatformPlugin {
   _FlutterPlatform({
@@ -372,7 +98,6 @@ class _FlutterPlatform extends PlatformPlugin {
     this.explicitObservatoryPort,
     this.host,
     this.port,
-    this.precompiledDillPath,
     this.precompiledDillFiles,
     this.trackWidgetCreation,
     this.updateGoldens,
@@ -387,14 +112,13 @@ class _FlutterPlatform extends PlatformPlugin {
   final int explicitObservatoryPort;
   final InternetAddress host;
   final int port;
-  final String precompiledDillPath;
-  final Map<String, String> precompiledDillFiles;
   final bool trackWidgetCreation;
   final bool updateGoldens;
   final Uri projectRootDirectory;
 
+  final Map<String, String> precompiledDillFiles;
   Directory fontsDirectory;
-  _Compiler compiler;
+  TestCompiler compiler;
 
   // Each time loadChannel() is called, we spin up a local WebSocket server,
   // then spin up the engine in a subprocess. We pass the engine a Dart file
@@ -441,9 +165,6 @@ class _FlutterPlatform extends PlatformPlugin {
       // Fail if there will be a port conflict.
       if (explicitObservatoryPort != null)
         throwToolExit('installHook() was called with an observatory port or debugger mode enabled, but then more than one test suite was run.');
-      // Fail if we're passing in a precompiled entry-point.
-      if (precompiledDillPath != null)
-        throwToolExit('installHook() was called with a precompiled test entry-point, but then more than one test suite was run.');
     }
     final int ourTestCount = _testCount;
     _testCount += 1;
@@ -466,21 +187,22 @@ class _FlutterPlatform extends PlatformPlugin {
     return remoteChannel;
   }
 
-  Future<String> _compileExpressionService(String isolateId, String expression,
-      List<String> definitions, List<String> typeDefinitions,
-      String libraryUri, String klass, bool isStatic,
-      ) async {
-    if (compiler == null || compiler.compiler == null) {
-      throw 'Compiler is not set up properly to compile $expression';
-    }
-    final CompilerOutput compilerOutput =
-      await compiler.compiler.compileExpression(expression, definitions,
-        typeDefinitions, libraryUri, klass, isStatic);
-    if (compilerOutput != null && compilerOutput.outputFilename != null) {
-      return base64.encode(fs.file(compilerOutput.outputFilename).readAsBytesSync());
-    }
-    throw 'Failed to compile $expression';
-  }
+  // Future<String> _compileExpressionService(String isolateId, String expression,
+  //     List<String> definitions, List<String> typeDefinitions,
+  //     String libraryUri, String klass, bool isStatic,
+  //     ) async {
+  //   printTrace('FlutterPlatform._compileExpressionService');
+  //   if (compiler == null || compiler.compiler == null) {
+  //     throw 'Compiler is not set up properly to compile $expression';
+  //   }
+  //   final CompilerOutput compilerOutput =
+  //     await compiler.compiler.compileExpression(expression, definitions,
+  //       typeDefinitions, libraryUri, klass, isStatic);
+  //   if (compilerOutput != null && compilerOutput.outputFilename != null) {
+  //     return base64.encode(fs.file(compilerOutput.outputFilename).readAsBytesSync());
+  //   }
+  //   throw 'Failed to compile $expression';
+  // }
 
   Future<_AsyncError> _startTest(
     String testPath,
@@ -533,23 +255,12 @@ class _FlutterPlatform extends PlatformPlugin {
       // If mapping is provided, look kernel file from mapping.
       // If all fails, create a "listener" dart that invokes actual test.
       String mainDart;
-      if (precompiledDillPath != null) {
-        mainDart = precompiledDillPath;
-      } else if (precompiledDillFiles != null) {
-        mainDart = precompiledDillFiles[testPath];
-      }
-      mainDart ??=
-          _createListenerDart(finalizers, ourTestCount, testPath, server);
 
-      if (precompiledDillPath == null && precompiledDillFiles == null) {
-        // Lazily instantiate compiler so it is built only if it is actually used.
-        compiler ??= _Compiler(trackWidgetCreation, projectRootDirectory);
-        mainDart = await compiler.compile(mainDart);
+      mainDart = precompiledDillFiles[testPath];
 
-        if (mainDart == null) {
-          controller.sink.addError(_getErrorMessage('Compilation failed', testPath, shellPath));
-          return null;
-        }
+      if (mainDart == null) {
+        controller.sink.addError(_getErrorMessage('Dill file not found', testPath, shellPath));
+        return null;
       }
 
       final Process process = await _startProcess(
@@ -563,6 +274,7 @@ class _FlutterPlatform extends PlatformPlugin {
       );
       subprocessActive = true;
       finalizers.add(() async {
+        printTrace('finalizer called');
         if (subprocessActive) {
           printTrace('test $ourTestCount: ensuring end-of-process for shell');
           process.kill();
@@ -606,9 +318,7 @@ class _FlutterPlatform extends PlatformPlugin {
           }
           processObservatoryUri = detectedUri;
           {
-            printTrace('Connecting to service protocol: $processObservatoryUri');
-            final Future<VMService> localVmService = VMService.connect(processObservatoryUri,
-              compileExpression: _compileExpressionService);
+            final Future<VMService> localVmService = VMService.connect(processObservatoryUri);
             localVmService.then((VMService vmservice) {
               printTrace('Successfully connected to service protocol: $processObservatoryUri');
             });
@@ -681,23 +391,21 @@ class _FlutterPlatform extends PlatformPlugin {
 
           final Completer<void> harnessDone = Completer<void>();
           final StreamSubscription<dynamic> harnessToTest =
-              controller.stream.listen(
-            (dynamic event) {
-              testSocket.add(json.encode(event));
-            },
-            onDone: harnessDone.complete,
-            onError: (dynamic error, dynamic stack) {
-              // If you reach here, it's unlikely we're going to be able to really handle this well.
-              printError('test harness controller stream experienced an unexpected error\ntest: $testPath\nerror: $error');
-              if (!controllerSinkClosed) {
-                controller.sink.addError(error, stack);
-                controller.sink.close();
-              } else {
-                printError('unexpected error from test harness controller stream: $error');
-              }
-            },
-            cancelOnError: true,
-          );
+            controller.stream.listen(
+              (dynamic event) => testSocket.add(json.encode(event)),
+              onDone: harnessDone.complete,
+              onError: (dynamic error, dynamic stack) {
+                // If you reach here, it's unlikely we're going to be able to really handle this well.
+                printError('test harness controller stream experienced an unexpected error\ntest: $testPath\nerror: $error');
+                if (!controllerSinkClosed) {
+                  controller.sink.addError(error, stack);
+                  controller.sink.close();
+                } else {
+                  printError('unexpected error from test harness controller stream: $error');
+                }
+              },
+              cancelOnError: true,
+            );
 
           final Completer<void> testDone = Completer<void>();
           final StreamSubscription<dynamic> testToHarness = testSocket.listen(
@@ -807,63 +515,14 @@ class _FlutterPlatform extends PlatformPlugin {
     } else {
       printTrace('test $ourTestCount: finished');
     }
+
     return outOfBandError;
-  }
-
-  String _createListenerDart(List<_Finalizer> finalizers, int ourTestCount,
-      String testPath, HttpServer server) {
-    // Prepare a temporary directory to store the Dart file that will talk to us.
-    final Directory tempDir = fs.systemTempDirectory.createTempSync('flutter_test_listener.');
-    finalizers.add(() async {
-      printTrace('test $ourTestCount: deleting temporary directory');
-      tempDir.deleteSync(recursive: true);
-    });
-
-    // Prepare the Dart file that will talk to us and start the test.
-    final File listenerFile = fs.file('${tempDir.path}/listener.dart');
-    listenerFile.createSync();
-    listenerFile.writeAsStringSync(_generateTestMain(
-      testUrl: fs.path.toUri(fs.path.absolute(testPath)),
-    ));
-    return listenerFile.path;
-  }
-
-  String _generateTestMain({
-    Uri testUrl,
-  }) {
-    assert(testUrl.scheme == 'file');
-    File testConfigFile;
-    Directory directory = fs.file(testUrl).parent;
-    while (directory.path != directory.parent.path) {
-      final File configFile = directory.childFile(_kTestConfigFileName);
-      if (configFile.existsSync()) {
-        printTrace('Discovered $_kTestConfigFileName in ${directory.path}');
-        testConfigFile = configFile;
-        break;
-      }
-      if (directory.childFile(_kProjectRootSentinel).existsSync()) {
-        printTrace('Stopping scan for $_kTestConfigFileName; '
-            'found project root at ${directory.path}');
-        break;
-      }
-      directory = directory.parent;
-    }
-    return generateTestBootstrap(
-      testUrl: testUrl,
-      testConfigFile: testConfigFile,
-      host: host,
-      updateGoldens: updateGoldens,
-    );
   }
 
   File _cachedFontConfig;
 
   @override
   Future<dynamic> close() async {
-    if (compiler != null) {
-      await compiler.dispose();
-      compiler = null;
-    }
     if (fontsDirectory != null) {
       printTrace('Deleting ${fontsDirectory.path}...');
       fontsDirectory.deleteSync(recursive: true);
@@ -963,7 +622,7 @@ class _FlutterPlatform extends PlatformPlugin {
           .transform<String>(const LineSplitter())
           .listen(
         (String line) {
-          if (line == _kStartTimeoutTimerMessage) {
+          if (line == kStartTimeoutTimerMessage) {
             if (startTimeoutTimer != null) {
               startTimeoutTimer();
             }
