@@ -4,8 +4,10 @@
 
 import 'dart:async';
 
+import 'package:flutter_tools/src/test/compiler.dart';
 import 'package:meta/meta.dart';
 import 'package:test_core/src/executable.dart' as test; // ignore: implementation_imports
+import 'package:watcher/watcher.dart';
 
 import '../artifacts.dart';
 import '../base/common.dart';
@@ -15,6 +17,7 @@ import '../base/process_manager.dart';
 import '../base/terminal.dart';
 import '../dart/package_map.dart';
 import '../globals.dart';
+import 'bootstrap.dart';
 import 'flutter_platform.dart' as loader;
 import 'watcher.dart';
 
@@ -32,6 +35,7 @@ Future<int> runTests(
   Map<String, String> precompiledDillFiles,
   bool trackWidgetCreation = false,
   bool updateGoldens = false,
+  bool watchTests = false,
   TestWatcher watcher,
   @required int concurrency,
 }) async {
@@ -68,19 +72,42 @@ Future<int> runTests(
   final InternetAddressType serverType =
       ipv6 ? InternetAddressType.IPv6 : InternetAddressType.IPv4;
 
-  loader.installHook(
-    shellPath: shellPath,
-    watcher: watcher,
-    enableObservatory: enableObservatory,
-    machine: machine,
-    startPaused: startPaused,
-    serverType: serverType,
-    precompiledDillPath: precompiledDillPath,
-    precompiledDillFiles: precompiledDillFiles,
-    trackWidgetCreation: trackWidgetCreation,
-    updateGoldens: updateGoldens,
-    projectRootDirectory: fs.currentDirectory.uri,
-  );
+  final Uri projectRootDirectory = fs.currentDirectory.uri;
+
+  final TestCompiler compiler = TestCompiler(trackWidgetCreation, projectRootDirectory);
+
+  final Function compileTestFiles = ({List<String> invalidatedFiles = const <String>[]}) async {
+    int index = 0;
+    final Map<String, String> precompiledDillFiles = <String, String>{};
+    for (String file in testFiles) {
+      final String mainDart = createListenerDart(
+        ourTestCount: index,
+        testPath: file,
+        host: loader.kHosts[serverType],
+        updateGoldens: updateGoldens,
+      );
+
+      final String dillPath = await compiler.compile(mainDart, invalidatedFiles: invalidatedFiles);
+      precompiledDillFiles[file] = dillPath;
+      index++;
+    }
+
+    loader.installHook(
+      shellPath: shellPath,
+      watcher: watcher,
+      enableObservatory: enableObservatory,
+      machine: machine,
+      startPaused: startPaused,
+      serverType: serverType,
+      precompiledDillFiles: precompiledDillFiles,
+      trackWidgetCreation: trackWidgetCreation,
+      updateGoldens: updateGoldens,
+      projectRootDirectory: projectRootDirectory,
+    );
+  };
+
+
+  await compileTestFiles();
 
   // Make the global packages path absolute.
   // (Makes sure it still works after we change the current directory.)
@@ -95,8 +122,31 @@ Future<int> runTests(
       fs.currentDirectory = workDir;
     }
 
-    printTrace('running test package with arguments: $testArgs');
     await test.main(testArgs);
+
+    if (watchTests) {
+      final Completer<void> completer = Completer<void>();
+      final DirectoryWatcher directoryWatcher = DirectoryWatcher(saved.path);
+
+      directoryWatcher.events.listen(
+        (WatchEvent event) async {
+          if (!event.path.endsWith('.dart')) {
+            return;
+          }
+          await compileTestFiles(invalidatedFiles: <String>[event.path]);
+          await test.main(testArgs);
+        },
+        onDone: completer.complete
+      );
+
+      await directoryWatcher.ready;
+
+      printStatus('Watcher is ready for events...', emphasis: true, color: TerminalColor.blue);
+
+      await completer.future;
+    }
+
+    await compiler.dispose();
 
     // test.main() sets dart:io's exitCode global.
     printTrace('test package returned with exit code $exitCode');
