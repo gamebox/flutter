@@ -33,7 +33,7 @@ import 'theme.dart';
 ///  * [AlertDialog], for dialogs that have a message and some buttons.
 ///  * [SimpleDialog], for dialogs that offer a variety of options.
 ///  * [showDialog], which actually displays the dialog and returns its result.
-///  * <https://material.google.com/components/dialogs.html>
+///  * <https://material.io/design/components/dialogs.html>
 class Dialog extends StatelessWidget {
   /// Creates a dialog.
   ///
@@ -189,8 +189,9 @@ class Dialog extends StatelessWidget {
 ///
 ///  * [SimpleDialog], which handles the scrolling of the contents but has no [actions].
 ///  * [Dialog], on which [AlertDialog] and [SimpleDialog] are based.
+///  * [CupertinoAlertDialog], an iOS-styled alert dialog.
 ///  * [showDialog], which actually displays the dialog and returns its result.
-///  * <https://material.google.com/components/dialogs.html#dialogs-alerts>
+///  * <https://material.io/design/components/dialogs.html#alert-dialog>
 class AlertDialog extends StatelessWidget {
   /// Creates an alert dialog.
   ///
@@ -285,7 +286,7 @@ class AlertDialog extends StatelessWidget {
   /// The semantic label of the dialog used by accessibility frameworks to
   /// announce screen transitions when the dialog is opened and closed.
   ///
-  /// If this label is not provided, a semantic label will be infered from the
+  /// If this label is not provided, a semantic label will be inferred from the
   /// [title] if it is not null.  If there is no title, the label will be taken
   /// from [MaterialLocalizations.alertDialogLabel].
   ///
@@ -361,7 +362,7 @@ class AlertDialog extends StatelessWidget {
       dialogChild = Semantics(
         namesRoute: true,
         label: label,
-        child: dialogChild
+        child: dialogChild,
       );
 
     return Dialog(
@@ -402,7 +403,7 @@ class AlertDialog extends StatelessWidget {
 ///  * [showDialog], which actually displays the dialog and returns its result.
 ///  * [FlatButton], which are commonly used as actions in other kinds of
 ///    dialogs, such as [AlertDialog]s.
-///  * <https://material.google.com/components/dialogs.html#dialogs-simple-dialogs>
+///  * <https://material.io/design/components/dialogs.html#simple-dialog>
 class SimpleDialogOption extends StatelessWidget {
   /// Creates an option for a [SimpleDialog].
   const SimpleDialogOption({
@@ -430,7 +431,7 @@ class SimpleDialogOption extends StatelessWidget {
       onTap: onPressed,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 24.0),
-        child: child
+        child: child,
       ),
     );
   }
@@ -502,7 +503,7 @@ class SimpleDialogOption extends StatelessWidget {
 ///  * [AlertDialog], for dialogs that have a row of buttons below the body.
 ///  * [Dialog], on which [SimpleDialog] and [AlertDialog] are based.
 ///  * [showDialog], which actually displays the dialog and returns its result.
-///  * <https://material.google.com/components/dialogs.html#dialogs-simple-dialogs>
+///  * <https://material.io/design/components/dialogs.html#simple-dialog>
 class SimpleDialog extends StatelessWidget {
   /// Creates a simple dialog.
   ///
@@ -570,7 +571,7 @@ class SimpleDialog extends StatelessWidget {
   /// The semantic label of the dialog used by accessibility frameworks to
   /// announce screen transitions when the dialog is opened and closed.
   ///
-  /// If this label is not provided, a semantic label will be infered from the
+  /// If this label is not provided, a semantic label will be inferred from the
   /// [title] if it is not null.  If there is no title, the label will be taken
   /// from [MaterialLocalizations.dialogLabel].
   ///
@@ -595,7 +596,7 @@ class SimpleDialog extends StatelessWidget {
         child: DefaultTextStyle(
           style: Theme.of(context).textTheme.title,
           child: Semantics(namesRoute: true, child: title),
-        )
+        ),
       ));
     } else {
       switch (defaultTargetPlatform) {
@@ -613,7 +614,7 @@ class SimpleDialog extends StatelessWidget {
         child: SingleChildScrollView(
           padding: contentPadding,
           child: ListBody(children: children),
-        )
+        ),
       ));
     }
 
@@ -686,7 +687,7 @@ Widget _buildMaterialDialogTransitions(BuildContext context, Animation<double> a
 ///  * [Dialog], on which [SimpleDialog] and [AlertDialog] are based.
 ///  * [showCupertinoDialog], which displays an iOS-style dialog.
 ///  * [showGeneralDialog], which allows for customization of the dialog popup.
-///  * <https://material.google.com/components/dialogs.html>
+///  * <https://material.io/design/components/dialogs.html>
 Future<T> showDialog<T>({
   @required BuildContext context,
   bool barrierDismissible = true,
@@ -699,11 +700,12 @@ Future<T> showDialog<T>({
 }) {
   assert(child == null || builder == null);
   assert(debugCheckHasMaterialLocalizations(context));
+
+  final ThemeData theme = Theme.of(context, shadowThemeOnly: true);
   return showGeneralDialog(
     context: context,
     pageBuilder: (BuildContext buildContext, Animation<double> animation, Animation<double> secondaryAnimation) {
-      final ThemeData theme = Theme.of(context, shadowThemeOnly: true);
-      final Widget pageChild =  child ?? Builder(builder: builder);
+      final Widget pageChild = child ?? Builder(builder: builder);
       return SafeArea(
         child: Builder(
           builder: (BuildContext context) {

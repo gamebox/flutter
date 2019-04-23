@@ -45,15 +45,18 @@ class ConfigCommand extends FlutterCommand {
   bool get shouldUpdateCache => false;
 
   @override
+  Future<Set<DevelopmentArtifact>> get requiredArtifacts async => const <DevelopmentArtifact>{};
+
+  @override
   String get usageFooter {
     // List all config settings.
     String values = config.keys.map<String>((String key) {
       return '  $key: ${config.getValue(key)}';
     }).join('\n');
-    if (values.isNotEmpty)
-      values = '\nSettings:\n$values\n\n';
+    if (values.isEmpty)
+      values = '  No settings have been configured.';
     return
-      '$values'
+      '\nSettings:\n$values\n\n'
       'Analytics reporting is currently ${flutterUsage.enabled ? 'enabled' : 'disabled'}.';
   }
 

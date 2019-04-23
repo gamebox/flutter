@@ -46,7 +46,7 @@ It's also possible that a previously installed app with the same Bundle\u0020
 Identifier was signed with a different certificate.
 
 For more information, please visit:
-  https://flutter.io/setup/#deploy-to-ios-devices
+  https://flutter.dev/setup/#deploy-to-ios-devices
 
 Or run on an iOS simulator without code signing
 ════════════════════════════════════════════════════════════════════════════════''';
@@ -60,7 +60,7 @@ Provisioning Profile. Please ensure that a Development Team is selected by:
 $fixWithDevelopmentTeamInstruction
 
 For more information, please visit:
-  https://flutter.io/setup/#deploy-to-ios-devices
+  https://flutter.dev/setup/#deploy-to-ios-devices
 
 Or run on an iOS simulator without code signing
 ════════════════════════════════════════════════════════════════════════════════''';
@@ -94,8 +94,8 @@ final RegExp _certificateOrganizationalUnitExtractionPattern = RegExp(r'OU=([a-z
 /// project has a development team set in the project's build settings.
 Future<Map<String, String>> getCodeSigningIdentityDevelopmentTeam({
   BuildableIOSApp iosApp,
-  bool usesTerminalUi = true
-}) async{
+  bool usesTerminalUi = true,
+}) async {
   final Map<String, String> buildSettings = iosApp.project.buildSettings;
   if (buildSettings == null)
     return null;
@@ -158,12 +158,12 @@ Future<Map<String, String>> getCodeSigningIdentityDevelopmentTeam({
   final String opensslOutput = await utf8.decodeStream(opensslProcess.stdout);
   // Fire and forget discard of the stderr stream so we don't hold onto resources.
   // Don't care about the result.
-  opensslProcess.stderr.drain<String>(); // ignore: unawaited_futures
+  unawaited(opensslProcess.stderr.drain<String>());
 
   if (await opensslProcess.exitCode != 0)
     return null;
 
-  return <String, String> {
+  return <String, String>{
     'DEVELOPMENT_TEAM': _certificateOrganizationalUnitExtractionPattern
       .firstMatch(opensslOutput)
       ?.group(1),
@@ -187,8 +187,7 @@ Future<String> _chooseSigningIdentity(List<String> validCodeSigningIdentities, b
       if (validCodeSigningIdentities.contains(savedCertChoice)) {
         printStatus('Found saved certificate choice "$savedCertChoice". To clear, use "flutter config".');
         return savedCertChoice;
-      }
-      else {
+      } else {
         printError('Saved signing certificate "$savedCertChoice" is not a valid development certificate');
       }
     }

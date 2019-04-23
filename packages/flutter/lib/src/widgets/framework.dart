@@ -21,7 +21,6 @@ export 'package:flutter/foundation.dart' show
   protected,
   required,
   visibleForTesting;
-
 export 'package:flutter/foundation.dart' show FlutterError, debugPrint, debugPrintStack;
 export 'package:flutter/foundation.dart' show VoidCallback, ValueChanged, ValueGetter, ValueSetter;
 export 'package:flutter/foundation.dart' show DiagnosticLevel;
@@ -36,14 +35,6 @@ export 'package:flutter/rendering.dart' show RenderObject, RenderBox, debugDumpR
 // abstract class RenderFrogJar extends RenderObject { }
 // abstract class FrogJar extends RenderObjectWidget { }
 // abstract class FrogJarParentData extends ParentData { Size size; }
-
-// DOCUMENTATION TEMPLATES FOR THE WIDGET LIBRARY
-
-/// {@template flutter.widgets.child}
-/// This widget can only have one child. To lay out multiple children, let this
-/// widget's child be a widget such as [Row], [Column], or [Stack], which have a
-/// `children` property, and then provide the children to that widget.
-/// {@endtemplate}
 
 // KEYS
 
@@ -125,7 +116,6 @@ abstract class GlobalKey<T extends State<StatefulWidget>> extends Key {
   const GlobalKey.constructor() : super.empty();
 
   static final Map<GlobalKey, Element> _registry = <GlobalKey, Element>{};
-  static final Set<GlobalKey> _removedKeys = HashSet<GlobalKey>();
   static final Set<Element> _debugIllFatedElements = HashSet<Element>();
   static final Map<GlobalKey, Element> _debugReservations = <GlobalKey, Element>{};
 
@@ -151,10 +141,8 @@ abstract class GlobalKey<T extends State<StatefulWidget>> extends Key {
       }
       return true;
     }());
-    if (_registry[this] == element) {
+    if (_registry[this] == element)
       _registry.remove(this);
-      _removedKeys.add(this);
-    }
   }
 
   void _debugReserveFor(Element parent) {
@@ -451,6 +439,8 @@ abstract class Widget extends DiagnosticableTree {
 /// description of the user interface is fully concrete (e.g., consists
 /// entirely of [RenderObjectWidget]s, which describe concrete [RenderObject]s).
 ///
+/// {@youtube 560 315 https://www.youtube.com/watch?v=wE7khGHVkYY}
+///
 /// Stateless widget are useful when the part of the user interface you are
 /// describing does not depend on anything other than the configuration
 /// information in the object itself and the [BuildContext] in which the widget
@@ -500,7 +490,10 @@ abstract class Widget extends DiagnosticableTree {
 ///
 /// {@tool sample}
 ///
-/// The following is a skeleton of a stateless widget subclass called `GreenFrog`:
+/// The following is a skeleton of a stateless widget subclass called `GreenFrog`.
+///
+/// Normally, widgets have more constructor arguments, each of which corresponds
+/// to a `final` property.
 ///
 /// ```dart
 /// class GreenFrog extends StatelessWidget {
@@ -513,22 +506,21 @@ abstract class Widget extends DiagnosticableTree {
 /// }
 /// ```
 /// {@end-tool}
+///
 /// {@tool sample}
 ///
-/// Normally widgets have more constructor arguments, each of which corresponds
-/// to a `final` property. The next example shows the more generic widget `Frog`
-/// which can be given a color and a child:
+/// This next example shows the more generic widget `Frog` which can be given
+/// a color and a child:
 ///
 /// ```dart
 /// class Frog extends StatelessWidget {
 ///   const Frog({
 ///     Key key,
-///     this.color: const Color(0xFF2DBD3A),
+///     this.color = const Color(0xFF2DBD3A),
 ///     this.child,
 ///   }) : super(key: key);
 ///
 ///   final Color color;
-///
 ///   final Widget child;
 ///
 ///   @override
@@ -620,6 +612,8 @@ abstract class StatelessWidget extends Widget {
 /// [BuildContext] in which the widget is inflated, consider using
 /// [StatelessWidget].
 ///
+/// {@youtube 560 315 https://www.youtube.com/watch?v=AqCMFXEmf3w}
+///
 /// [StatefulWidget] instances themselves are immutable and store their mutable
 /// state either in separate [State] objects that are created by the
 /// [createState] method, or in objects to which that [State] subscribes, for
@@ -710,7 +704,11 @@ abstract class StatelessWidget extends Widget {
 ///
 /// {@tool sample}
 ///
-/// The following is a skeleton of a stateful widget subclass called `YellowBird`:
+/// This is a skeleton of a stateful widget subclass called `YellowBird`.
+///
+/// In this example. the [State] has no actual state. State is normally
+/// represented as private member fields. Also, normally widgets have more
+/// constructor arguments, each of which corresponds to a `final` property.
 ///
 /// ```dart
 /// class YellowBird extends StatefulWidget {
@@ -730,11 +728,7 @@ abstract class StatelessWidget extends Widget {
 /// {@end-tool}
 /// {@tool sample}
 ///
-/// In this example. the [State] has no actual state. State is normally
-/// represented as private member fields. Also, normally widgets have more
-/// constructor arguments, each of which corresponds to a `final` property.
-///
-/// The next example shows the more generic widget `Bird` which can be given a
+/// This example shows the more generic widget `Bird` which can be given a
 /// color and a child, and which has some internal state with a method that
 /// can be called to mutate it:
 ///
@@ -742,12 +736,11 @@ abstract class StatelessWidget extends Widget {
 /// class Bird extends StatefulWidget {
 ///   const Bird({
 ///     Key key,
-///     this.color: const Color(0xFFFFE306),
+///     this.color = const Color(0xFFFFE306),
 ///     this.child,
 ///   }) : super(key: key);
 ///
 ///   final Color color;
-///
 ///   final Widget child;
 ///
 ///   _BirdState createState() => _BirdState();
@@ -983,12 +976,19 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   /// location at which this object was inserted into the tree (i.e., [context])
   /// or on the widget used to configure this object (i.e., [widget]).
   ///
-  /// If a [State]'s [build] method depends on an object that can itself change
-  /// state, for example a [ChangeNotifier] or [Stream], or some other object to
-  /// which one can subscribe to receive notifications, then the [State] should
-  /// subscribe to that object during [initState], unsubscribe from the old
-  /// object and subscribe to the new object when it changes in
-  /// [didUpdateWidget], and then unsubscribe from the object in [dispose].
+  /// {@template flutter.widgets.subscriptions}
+  /// If a [State]'s [build] method depends on an object that can itself
+  /// change state, for example a [ChangeNotifier] or [Stream], or some
+  /// other object to which one can subscribe to receive notifications, then
+  /// be sure to subscribe and unsubscribe properly in [initState],
+  /// [didUpdateWidget], and [dispose]:
+  ///
+  ///  * In [initState], subscribe to the object.
+  ///  * In [didUpdateWidget] unsubscribe from the old object and subscribe
+  ///    to the new one if the updated widget configuration requires
+  ///    replacing the object.
+  ///  * In [dispose], unsubscribe from the object.
+  /// {@endtemplate}
   ///
   /// You cannot use [BuildContext.inheritFromWidgetOfExactType] from this
   /// method. However, [didChangeDependencies] will be called immediately
@@ -1017,12 +1017,7 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   /// The framework always calls [build] after calling [didUpdateWidget], which
   /// means any calls to [setState] in [didUpdateWidget] are redundant.
   ///
-  /// If a [State]'s [build] method depends on an object that can itself change
-  /// state, for example a [ChangeNotifier] or [Stream], or some other object to
-  /// which one can subscribe to receive notifications, then the [State] should
-  /// subscribe to that object during [initState], unsubscribe from the old
-  /// object and subscribe to the new object when it changes in
-  /// [didUpdateWidget], and then unsubscribe from the object in [dispose].
+  /// {@macro flutter.widgets.subscriptions}
   ///
   /// If you override this, make sure your method starts with a call to
   /// super.didUpdateWidget(oldWidget).
@@ -1030,23 +1025,15 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   @protected
   void didUpdateWidget(covariant T oldWidget) { }
 
-  /// Called whenever the application is reassembled during debugging, for
-  /// example during hot reload.
-  ///
-  /// This method should rerun any initialization logic that depends on global
-  /// state, for example, image loading from asset bundles (since the asset
-  /// bundle may have changed).
+  /// {@macro flutter.widgets.reassemble}
   ///
   /// In addition to this method being invoked, it is guaranteed that the
   /// [build] method will be invoked when a reassemble is signaled. Most
   /// widgets therefore do not need to do anything in the [reassemble] method.
   ///
-  /// This function will only be called during development. In release builds,
-  /// the `ext.flutter.reassemble` hook is not available, and so this code will
-  /// never execute.
-  ///
   /// See also:
   ///
+  ///  * [Element.reassemble]
   ///  * [BindingBase.reassembleApplication]
   ///  * [Image], which uses this to reload images.
   @protected
@@ -1183,12 +1170,7 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   /// Subclasses should override this method to release any resources retained
   /// by this object (e.g., stop any active animations).
   ///
-  /// If a [State]'s [build] method depends on an object that can itself change
-  /// state, for example a [ChangeNotifier] or [Stream], or some other object to
-  /// which one can subscribe to receive notifications, then the [State] should
-  /// subscribe to that object during [initState], unsubscribe from the old
-  /// object and subscribe to the new object when it changes in
-  /// [didUpdateWidget], and then unsubscribe from the object in [dispose].
+  /// {@macro flutter.widgets.subscriptions}
   ///
   /// If you override this, make sure to end your method with a call to
   /// super.dispose().
@@ -1357,7 +1339,11 @@ abstract class ProxyWidget extends Widget {
 
   /// The widget below this widget in the tree.
   ///
-  /// {@macro flutter.widgets.child}
+  /// {@template flutter.widgets.child}
+  /// This widget can only have one child. To lay out multiple children, let this
+  /// widget's child be a widget such as [Row], [Column], or [Stack], which have a
+  /// `children` property, and then provide the children to that widget.
+  /// {@endtemplate}
   final Widget child;
 }
 
@@ -1502,6 +1488,8 @@ abstract class ParentDataWidget<T extends RenderObjectWidget> extends ProxyWidge
 ///
 /// Inherited widgets, when referenced in this way, will cause the consumer to
 /// rebuild when the inherited widget itself changes state.
+///
+/// {@youtube 560 315 https://www.youtube.com/watch?v=Zbm3hjPjQMk}
 ///
 /// {@tool sample}
 ///
@@ -1955,11 +1943,15 @@ abstract class BuildContext {
   /// Returns the nearest ancestor widget of the given type, which must be the
   /// type of a concrete [Widget] subclass.
   ///
-  /// This should not be used from build methods, because the build context will
-  /// not be rebuilt if the value that would be returned by this method changes.
-  /// In general, [inheritFromWidgetOfExactType] is more useful. This method is
+  /// In general, [inheritFromWidgetOfExactType] is more useful, since inherited
+  /// widgets will trigger consumers to rebuild when they change. This method is
   /// appropriate when used in interaction event handlers (e.g. gesture
-  /// callbacks), or for performing one-off tasks.
+  /// callbacks) or for performing one-off tasks such as asserting that you have
+  /// or don't have a widget of a specific type as an ancestor. The return value
+  /// of a Widget's build method should not depend on the value returned by this
+  /// method, because the build context will not rebuild if the return value of
+  /// this method changes. This could lead to a situation where data used in the
+  /// build method changes, but the widget is not rebuilt.
   ///
   /// Calling this method is relatively expensive (O(N) in the depth of the
   /// tree). Only call this method if the distance from this widget to the
@@ -2236,7 +2228,7 @@ class BuildOwner {
   /// [debugPrintBuildScope] to true. This is useful when debugging problems
   /// involving widgets not getting marked dirty, or getting marked dirty too
   /// often.
-  void buildScope(Element context, [VoidCallback callback]) {
+  void buildScope(Element context, [ VoidCallback callback ]) {
     if (callback == null && _dirtyElements.isEmpty)
       return;
     assert(context != null);
@@ -2259,7 +2251,7 @@ class BuildOwner {
           context._debugSetAllowIgnoredCallsToMarkNeedsBuild(true);
           debugPreviousBuildTarget = _debugCurrentBuildTarget;
           _debugCurrentBuildTarget = context;
-         return true;
+          return true;
         }());
         _dirtyElementsNeedsResorting = false;
         try {
@@ -2290,7 +2282,7 @@ class BuildOwner {
             informationCollector: (StringBuffer information) {
               information.writeln('The element being rebuilt at the time was index $index of $dirtyCount:');
               information.write('  ${_dirtyElements[index]}');
-            }
+            },
           );
         }
         index += 1;
@@ -2467,7 +2459,7 @@ class BuildOwner {
     try {
       assert(root._parent == null);
       assert(root.owner == this);
-      root._reassemble();
+      root.reassemble();
     } finally {
       Timeline.finishSync();
     }
@@ -2595,11 +2587,30 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
 
   bool _active = false;
 
+  /// {@template flutter.widgets.reassemble}
+  /// Called whenever the application is reassembled during debugging, for
+  /// example during hot reload.
+  ///
+  /// This method should rerun any initialization logic that depends on global
+  /// state, for example, image loading from asset bundles (since the asset
+  /// bundle may have changed).
+  ///
+  /// This function will only be called during development. In release builds,
+  /// the `ext.flutter.reassemble` hook is not available, and so this code will
+  /// never execute.
+  /// {@endtemplate}
+  ///
+  /// See also:
+  ///
+  ///  * [State.reassemble]
+  ///  * [BindingBase.reassembleApplication]
+  ///  * [Image], which uses this to reload images.
   @mustCallSuper
-  void _reassemble() {
+  @protected
+  void reassemble() {
     markNeedsBuild();
     visitChildren((Element child) {
-      child._reassemble();
+      child.reassemble();
     });
   }
 
@@ -3410,7 +3421,8 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
   }
 
   /// A short, textual description of this element.
-  @override String toStringShort() {
+  @override
+  String toStringShort() {
     return widget != null ? '${widget.toStringShort()}' : '[$runtimeType]';
   }
 
@@ -3425,6 +3437,12 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
       widget.debugFillProperties(properties);
     }
     properties.add(FlagProperty('dirty', value: dirty, ifTrue: 'dirty'));
+    if (_dependencies != null && _dependencies.isNotEmpty) {
+      final List<DiagnosticsNode> diagnosticsDependencies = _dependencies
+        .map((InheritedElement element) => element.widget.toDiagnosticsNode(style: DiagnosticsTreeStyle.sparse))
+        .toList();
+      properties.add(DiagnosticsProperty<List<DiagnosticsNode>>('dependencies', diagnosticsDependencies));
+    }
   }
 
   @override
@@ -3580,7 +3598,8 @@ typedef ErrorWidgetBuilder = Widget Function(FlutterErrorDetails details);
 /// information such as the stack trace for the exception.
 class ErrorWidget extends LeafRenderObjectWidget {
   /// Creates a widget that displays the given error message.
-  ErrorWidget(Object exception) : message = _stringify(exception),
+  ErrorWidget(Object exception)
+    : message = _stringify(exception),
       super(key: UniqueKey());
 
   /// The configurable factory for [ErrorWidget].
@@ -3615,7 +3634,9 @@ class ErrorWidget extends LeafRenderObjectWidget {
   static String _stringify(Object exception) {
     try {
       return exception.toString();
-    } catch (e) { } // ignore: empty_catches
+    } catch (e) {
+      // intentionally left empty.
+    }
     return 'Error';
   }
 
@@ -3674,7 +3695,7 @@ typedef TransitionBuilder = Widget Function(BuildContext context, Widget child);
 /// See also:
 ///
 ///  * [WidgetBuilder], which is similar but only takes a [BuildContext].
-typedef ControlsWidgetBuilder = Widget Function(BuildContext context, {VoidCallback onStepContinue, VoidCallback onStepCancel});
+typedef ControlsWidgetBuilder = Widget Function(BuildContext context, { VoidCallback onStepContinue, VoidCallback onStepCancel });
 
 /// An [Element] that composes other [Element]s.
 ///
@@ -3709,11 +3730,8 @@ abstract class ComponentElement extends Element {
   /// [rebuild] when the element needs updating.
   @override
   void performRebuild() {
-    assert(() {
-      if (debugProfileBuildsEnabled)
-        Timeline.startSync('${widget.runtimeType}',  arguments: timelineWhitelistArguments);
-      return true;
-    }());
+    if (!kReleaseMode && debugProfileBuildsEnabled)
+      Timeline.startSync('${widget.runtimeType}',  arguments: timelineWhitelistArguments);
 
     assert(_debugSetAllowIgnoredCallsToMarkNeedsBuild(true));
     Widget built;
@@ -3736,11 +3754,8 @@ abstract class ComponentElement extends Element {
       _child = updateChild(null, built, slot);
     }
 
-    assert(() {
-      if (debugProfileBuildsEnabled)
-        Timeline.finishSync();
-      return true;
-    }());
+    if (!kReleaseMode && debugProfileBuildsEnabled)
+      Timeline.finishSync();
   }
 
   /// Subclasses should override this function to actually call the appropriate
@@ -3786,7 +3801,8 @@ class StatelessElement extends ComponentElement {
 class StatefulElement extends ComponentElement {
   /// Creates an element that uses the given widget as its configuration.
   StatefulElement(StatefulWidget widget)
-    : _state = widget.createState(), super(widget) {
+      : _state = widget.createState(),
+        super(widget) {
     assert(() {
       if (!_state._debugTypesAreRight(widget)) {
         throw FlutterError(
@@ -3817,9 +3833,9 @@ class StatefulElement extends ComponentElement {
   State<StatefulWidget> _state;
 
   @override
-  void _reassemble() {
+  void reassemble() {
     state.reassemble();
-    super._reassemble();
+    super.reassemble();
   }
 
   @override
@@ -4040,7 +4056,7 @@ class ParentDataElement<T extends RenderObjectWidget> extends ProxyElement {
           description: '$this',
           ownershipChain: parent.debugGetCreatorChain(10),
           foundValidAncestor: ancestor != null,
-          badAncestors: badAncestors
+          badAncestors: badAncestors,
         )
       );
     }());
@@ -4770,7 +4786,7 @@ abstract class RenderObjectElement extends Element {
 /// elements inherit their owner from their parent.
 abstract class RootRenderObjectElement extends RenderObjectElement {
   /// Initializes fields for subclasses.
-  RootRenderObjectElement(RenderObjectWidget widget): super(widget);
+  RootRenderObjectElement(RenderObjectWidget widget) : super(widget);
 
   /// Set the owner of the element. The owner will be propagated to all the
   /// descendants of this element.
@@ -4798,7 +4814,7 @@ abstract class RootRenderObjectElement extends RenderObjectElement {
 /// An [Element] that uses a [LeafRenderObjectWidget] as its configuration.
 class LeafRenderObjectElement extends RenderObjectElement {
   /// Creates an element that uses the given widget as its configuration.
-  LeafRenderObjectElement(LeafRenderObjectWidget widget): super(widget);
+  LeafRenderObjectElement(LeafRenderObjectWidget widget) : super(widget);
 
   @override
   void forgetChild(Element child) {
@@ -4910,6 +4926,7 @@ class MultiChildRenderObjectElement extends RenderObjectElement {
   /// This list is filtered to hide elements that have been forgotten (using
   /// [forgetChild]).
   @protected
+  @visibleForTesting
   Iterable<Element> get children => _children.where((Element child) => !_forgottenChildren.contains(child));
 
   List<Element> _children;
@@ -4988,7 +5005,7 @@ FlutterErrorDetails _debugReportException(
   String context,
   dynamic exception,
   StackTrace stack, {
-  InformationCollector informationCollector
+  InformationCollector informationCollector,
 }) {
   final FlutterErrorDetails details = FlutterErrorDetails(
     exception: exception,
